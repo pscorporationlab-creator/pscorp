@@ -2111,7 +2111,7 @@ function doExportXlsx(){
     const rows=members.filter(function(m){return map[m.name];});
     // 실제 사용된 유형만 컬럼으로
     const usedTypes=TYPES.filter(function(t){return list.some(function(w){return w.type===t;});});
-    const header=['순번','이름','총 시간(h)'].concat(usedTypes.map(function(t){return TYPE_H[t]||t;})).concat([,'세전 금액(원)',taxPct,'실지급액(원)','입금 계좌']);
+    const header=['순번','이름','총 시간(h)'].concat(usedTypes.map(function(t){return TYPE_H[t]||t;})).concat(['세전 금액(원)',taxPct,'실지급액(원)','입금 계좌']);
     const data=[['정산현황 — '+periodLabel],['생성일시: '+ts],[],header];
     var tb=0,tt=0,tn=0;
     rows.forEach(function(m,i){
@@ -2182,7 +2182,7 @@ function exportSettlementXlsx(){
   const usedTypes=TYPES.filter(function(t){return list.some(function(w){return w.type===t;});});
   const taxPct='사업소득세 '+(taxRate*100).toFixed(1)+'%(원)';
   const ts=new Date().toLocaleString('ko-KR');
-  const header=['순번','이름','총 시간(h)'].concat(usedTypes.map(function(t){return TYPE_H[t]||t;})).concat([,'세전 금액(원)',taxPct,'실지급액(원)','입금 계좌']);
+  const header=['순번','이름','총 시간(h)'].concat(usedTypes.map(function(t){return TYPE_H[t]||t;})).concat(['세전 금액(원)',taxPct,'실지급액(원)','입금 계좌']);
   const data=[['정산현황 — '+periodLabel],['생성일시: '+ts],[],header];
   var tb=0,tt=0,tn=0;
   rows.forEach(function(m,i){
