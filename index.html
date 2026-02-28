@@ -663,11 +663,9 @@ tr:hover td{background:rgba(255,255,255,.02);}
       <div class="form-group" style="margin-bottom:14px;order:1;">
         <label>업무 유형</label>
         <select id="mw-type" onchange="onWorkTypeChange()">
-          <option value="ta">조교 (현장)</option>
-          <option value="mamako-online">마마코 - 온라인 피드백/참여</option>
-          <option value="mamako-edit">마마코 - 수정/게시/누락/현황</option>
-          <option value="mamako-qa">마마코 - 질답</option>
-          <option value="mamako-field">마마코 - 현장 출근</option>
+          <option value="mamako-online">마마코-온라인</option>
+          <option value="ta">현장조교</option>
+          <option value="mamako-qa">질의응답</option>
           <option value="lab">연구실</option>
         </select>
       </div>
@@ -766,11 +764,9 @@ let currentUser=null;
 let editWorkIdx=null, editMemberIdx=null;
 
 const TYPE_LABEL={
-  ta:'현장조교', lab:'연구실',
-  'mamako-online':'마마코-온라인',
-  'mamako-edit':'마마코-수정/게시',
-  'mamako-qa':'질의응답',
-  'mamako-field':'마마코-현장'
+  'mamako-online':'마마코-온라인', ta:'현장조교',
+  'mamako-qa':'질의응답', lab:'연구실',
+  'mamako-edit':'마마코-온라인','mamako-field':'현장조교'
 };
 
 const INIT_MEMBERS=[
@@ -1479,12 +1475,12 @@ function fillYearMonth(){
 function fmt(n){return Math.round(n).toLocaleString('ko-KR');}
 function typeBadge(t){
   const map={
-    ta:'<span class="badge badge-blue">현장조교</span>',
-    lab:'<span class="badge badge-green">연구실</span>',
     'mamako-online':'<span class="badge badge-purple">마마코-온라인</span>',
-    'mamako-edit':'<span class="badge badge-purple">마마코-수정</span>',
+    ta:'<span class="badge badge-blue">현장조교</span>',
     'mamako-qa':'<span class="badge badge-orange">질의응답</span>',
-    'mamako-field':'<span class="badge badge-purple">마마코-현장</span>',
+    lab:'<span class="badge badge-green">연구실</span>',
+    'mamako-edit':'<span class="badge badge-purple">마마코-온라인</span>',
+    'mamako-field':'<span class="badge badge-blue">현장조교</span>',
     mamako:'<span class="badge badge-purple">마마코</span>',
   };
   return map[t]||`<span class="badge">${t}</span>`;
@@ -2091,40 +2087,74 @@ function doExportXlsx(){
   const prefix=month==='all'?year:(year+'-'+String(month).padStart(2,'0'));
   const periodLabel=month==='all'?(year+'년 전체'):(year+'년 '+parseInt(month)+'월');
   const wb=XLSX.utils.book_new();
-  const tl={ta:'현장조교',lab:'연구실','mamako-online':'마마코-온라인','mamako-edit':'마마코-수정/게시','mamako-qa':'질의응답','mamako-field':'마마코-현장',mamako:'마마코'};
+  const QA_TYPE='mamako-qa';
+  const tl={ta:'현장조교',lab:'연구실','mamako-online':'마마코-온라인','mamako-edit':'마마코-온라인','mamako-qa':'질의응답','mamako-field':'현장조교',mamako:'마마코-온라인'};
   const taxPct='사업소득세 '+(taxRate*100).toFixed(1)+'%(원)';
   const ts=new Date().toLocaleString('ko-KR');
 
   if(doSett){
     const list=workReports.filter(function(w){return w.date&&w.date.startsWith(prefix);});
-    // 유형별 시간 집계
+    // 유형별 집계
+    // mamako-online: 금액 집계 + 세부(피드백/참여/질답/수정/현장/연구실) 합산
+    // mamako-qa(독립): 건수 집계
+    // ta, lab, mamako-field: 시간 집계
     const map={};
-    const TYPES=['ta','mamako-online','mamako-qa','lab','mamako-field','mamako-edit'];
-    const TYPE_H={ta:'현장조교(h)','mamako-online':'온라인마마코(h)','mamako-qa':'질의응답(h)',lab:'연구실(h)','mamako-field':'마마코현장(h)','mamako-edit':'마마코수정(h)'};
     list.forEach(function(w){
-      if(!map[w.name])map[w.name]={h:0,a:0,types:{}};
-      map[w.name].h+=(w.hours||0);
-      map[w.name].a+=w.amount;
-      if(!map[w.name].types[w.type])map[w.name].types[w.type]=0;
-      map[w.name].types[w.type]+=(w.hours||0);
+      if(!map[w.name])map[w.name]={a:0, mamakoA:0, taH:0, labH:0, qaCount:0,
+        fb:0, att:0, editH:0, mqaCount:0, fieldH:0, mLabH:0};
+      var d=map[w.name], m=w.meta||{};
+      d.a+=w.amount;
+      if(w.type==='mamako-online'){
+        d.mamakoA+=w.amount;
+        d.fb+=(m.feedback||0); d.att+=(m.attend||0);
+        d.editH+=(m.editH||0); d.mqaCount+=(m.qa||0);
+        d.fieldH+=(m.fieldH||0); d.mLabH+=(m.labH||0);
+      } else if(w.type===QA_TYPE){
+        d.qaCount+=(m.qa||0);
+      } else if(w.type==='ta'||w.type==='mamako-field'){
+        d.taH+=(w.hours||0);
+      } else if(w.type==='lab'){
+        d.labH+=(w.hours||0);
+      }
     });
     const rows=members.filter(function(m){return map[m.name];});
-    // 실제 사용된 유형만 컬럼으로
-    const usedTypes=TYPES.filter(function(t){return list.some(function(w){return w.type===t;});});
-    const header=['순번','이름','총 시간(h)'].concat(usedTypes.map(function(t){return TYPE_H[t]||t;})).concat(['세전 금액(원)',taxPct,'실지급액(원)','입금 계좌']);
+    const hasMamako=list.some(function(w){return w.type==='mamako-online';});
+    const hasTA=list.some(function(w){return w.type==='ta'||w.type==='mamako-field';});
+    const hasLab=list.some(function(w){return w.type==='lab';});
+    const hasQA=list.some(function(w){return w.type===QA_TYPE;});
+    // 헤더 구성
+    const header=['순번','이름'];
+    if(hasMamako) header.push('마마코(원)','└피드백(건)','└참여(회)','└수정/게시(h)','└질답(건)','└현장(h)','└연구실(h)');
+    if(hasTA)  header.push('현장조교(h)');
+    if(hasLab) header.push('연구실(h)');
+    if(hasQA)  header.push('질의응답(건)');
+    header.push('세전 금액(원)',taxPct,'실지급액(원)','입금 계좌');
     const data=[['정산현황 — '+periodLabel],['생성일시: '+ts],[],header];
     var tb=0,tt=0,tn=0;
     rows.forEach(function(m,i){
       var d=map[m.name],tax=Math.floor(d.a*taxRate),net=d.a-tax;
       tb+=d.a;tt+=tax;tn+=net;
-      var typeHours=usedTypes.map(function(t){return d.types[t]||0;});
-      data.push([i+1,m.name,d.h].concat(typeHours).concat([d.a,tax,net,m.account||'']));
+      var row=[i+1,m.name];
+      if(hasMamako) row.push(d.mamakoA||0, d.fb||0, d.att||0, d.editH||0, d.mqaCount||0, d.fieldH||0, d.mLabH||0);
+      if(hasTA)  row.push(d.taH||0);
+      if(hasLab) row.push(d.labH||0);
+      if(hasQA)  row.push(d.qaCount||0);
+      row.push(d.a,tax,net,m.account||'');
+      data.push(row);
     });
-    var sumRow=['','합계',''].concat(usedTypes.map(function(){return '';})).concat([tb,tt,tn,'']);
+    var sumRow=['','합계'];
+    if(hasMamako){var totM=rows.reduce(function(s,m){return s+(map[m.name].mamakoA||0);},0);sumRow.push(totM,'','','','','','');}
+    if(hasTA){var totT=rows.reduce(function(s,m){return s+(map[m.name].taH||0);},0);sumRow.push(totT);}
+    if(hasLab){var totL=rows.reduce(function(s,m){return s+(map[m.name].labH||0);},0);sumRow.push(totL);}
+    if(hasQA){var totQ=rows.reduce(function(s,m){return s+(map[m.name].qaCount||0);},0);sumRow.push(totQ);}
+    sumRow.push(tb,tt,tn,'');
     data.push([],sumRow);
     const ws=XLSX.utils.aoa_to_sheet(data);
-    var cols=[{wch:6},{wch:10},{wch:12}];
-    usedTypes.forEach(function(){cols.push({wch:16});});
+    var cols=[{wch:6},{wch:12}];
+    if(hasMamako) cols=cols.concat([{wch:14},{wch:10},{wch:10},{wch:12},{wch:10},{wch:10},{wch:10}]);
+    if(hasTA)  cols.push({wch:12});
+    if(hasLab) cols.push({wch:12});
+    if(hasQA)  cols.push({wch:14});
     cols=cols.concat([{wch:16},{wch:22},{wch:14},{wch:32}]);
     ws['!cols']=cols;
     ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:header.length-1}}];
@@ -2138,13 +2168,44 @@ function doExportXlsx(){
       var nc=a.name.localeCompare(b.name,'ko');
       return nc!==0?nc:a.date.localeCompare(b.date);
     });
-    const data2=[['업무내역 — '+periodLabel],['생성일시: '+ts],[],['날짜','이름','업무유형','상세내용','시간(h)','시급(원/h)','세전금액(원)','세후금액(원)','비고']];
-    list2.forEach(function(w){data2.push([w.date,w.name,tl[w.type]||w.type,w.detail||'',w.hours||0,w.rate||0,w.amount,Math.floor(w.amount*(1-taxRate)),w.note||'']);});
+    const data2=[['업무내역 — '+periodLabel],['생성일시: '+ts],[],
+      ['날짜','이름','업무유형','상세내용',
+       '피드백(건)','참여(회)','수정/게시(h)','질답(건)','현장(h)','현장시급','연구실(h)','연구실시급',
+       '총시간(h)','세전금액(원)','세후금액(원)','비고']];
+    list2.forEach(function(w){
+      var m=w.meta||{};
+      if(w.type==='mamako-online'){
+        data2.push([
+          w.date, w.name, tl[w.type]||w.type, w.detail||'',
+          m.feedback||0, m.attend||0, m.editH||0, m.qa||0,
+          m.fieldH||0, m.fieldH?(m.fieldR||10000):'-',
+          m.labH||0,   m.labH?(m.labR||10000):'-',
+          w.hours||0,
+          w.amount, Math.floor(w.amount*(1-taxRate)), w.note||''
+        ]);
+      } else if(w.type===QA_TYPE){
+        data2.push([
+          w.date, w.name, tl[w.type]||w.type, w.detail||'',
+          '-','-','-', m.qa||0, '-','-','-','-',
+          '-',
+          w.amount, Math.floor(w.amount*(1-taxRate)), w.note||''
+        ]);
+      } else {
+        data2.push([
+          w.date, w.name, tl[w.type]||w.type, w.detail||'',
+          '-','-','-','-','-','-','-','-',
+          w.hours||0,
+          w.amount, Math.floor(w.amount*(1-taxRate)), w.note||''
+        ]);
+      }
+    });
     var tb2=list2.reduce(function(s,w){return s+w.amount;},0);
-    data2.push([],['','','','','','합계',tb2,Math.floor(tb2*(1-taxRate)),'']);
+    data2.push([],['','','','','','','','','','','','','합계',tb2,Math.floor(tb2*(1-taxRate)),'']);
     const ws2=XLSX.utils.aoa_to_sheet(data2);
-    ws2['!cols']=[{wch:12},{wch:10},{wch:18},{wch:28},{wch:10},{wch:12},{wch:16},{wch:16},{wch:16}];
-    ws2['!merges']=[{s:{r:0,c:0},e:{r:0,c:8}}];
+    ws2['!cols']=[{wch:12},{wch:10},{wch:18},{wch:32},
+      {wch:10},{wch:10},{wch:12},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},
+      {wch:10},{wch:16},{wch:16},{wch:16}];
+    ws2['!merges']=[{s:{r:0,c:0},e:{r:0,c:15}}];
     XLSX.utils.book_append_sheet(wb,ws2,'업무내역');
   }
 
@@ -2168,38 +2229,86 @@ function exportSettlementXlsx(){
   const prefix=year+'-'+month;
   const periodLabel=year+'년 '+parseInt(month)+'월';
   const list=workReports.filter(function(w){return w.date&&w.date.startsWith(prefix);});
-  const TYPES=['ta','mamako-online','mamako-qa','lab','mamako-field','mamako-edit'];
-  const TYPE_H={ta:'현장조교(h)','mamako-online':'온라인마마코(h)','mamako-qa':'질의응답(h)',lab:'연구실(h)','mamako-field':'마마코현장(h)','mamako-edit':'마마코수정(h)'};
+  const ts=new Date().toLocaleString('ko-KR');
+
+  // 유형 그룹 정의
+  // 연구실 = lab
+  // 마마코 = mamako-online, mamako-qa, mamako-edit
+  // 조교   = ta, mamako-field
+  const isLab    = function(t){return t==='lab';};
+  const isMamako = function(t){return t==='mamako-online'||t==='mamako-qa'||t==='mamako-edit'||t==='mamako';};
+  const isTa     = function(t){return t==='ta'||t==='mamako-field';};
+
+  // 조교별 금액 집계
   const map={};
   list.forEach(function(w){
-    if(!map[w.name])map[w.name]={h:0,a:0,types:{}};
-    map[w.name].h+=(w.hours||0);
-    map[w.name].a+=w.amount;
-    if(!map[w.name].types[w.type])map[w.name].types[w.type]=0;
-    map[w.name].types[w.type]+=(w.hours||0);
+    if(!map[w.name])map[w.name]={lab:0,mamako:0,ta:0};
+    if(isLab(w.type))    map[w.name].lab    += w.amount;
+    else if(isMamako(w.type)) map[w.name].mamako += w.amount;
+    else if(isTa(w.type))     map[w.name].ta     += w.amount;
   });
-  const rows=members.filter(function(m){return map[m.name];});
-  const usedTypes=TYPES.filter(function(t){return list.some(function(w){return w.type===t;});});
-  const taxPct='사업소득세 '+(taxRate*100).toFixed(1)+'%(원)';
-  const ts=new Date().toLocaleString('ko-KR');
-  const header=['순번','이름','총 시간(h)'].concat(usedTypes.map(function(t){return TYPE_H[t]||t;})).concat(['세전 금액(원)',taxPct,'실지급액(원)','입금 계좌']);
+
+  // 헤더
+  const header=[
+    '이름','주민번호','핸드폰','계좌 번호',
+    '연구실 정산','연구실 3.3%',
+    '마마코 정산','마마코 3.3%',
+    '조교 정산','조교 3.3%',
+    '연구실&마마코&조교 합산','비고'
+  ];
   const data=[['정산현황 — '+periodLabel],['생성일시: '+ts],[],header];
-  var tb=0,tt=0,tn=0;
-  rows.forEach(function(m,i){
-    var d=map[m.name],tax=Math.floor(d.a*taxRate),net=d.a-tax;
-    tb+=d.a;tt+=tax;tn+=net;
-    var typeHours=usedTypes.map(function(t){return d.types[t]||0;});
-    data.push([i+1,m.name,d.h].concat(typeHours).concat([d.a,tax,net,m.account||'']));
+
+  // 전체 조교 목록 (이름 오름차순)
+  const sorted=[...members].sort(function(a,b){return a.name.localeCompare(b.name,'ko');});
+  var totalNet=0;
+  sorted.forEach(function(m){
+    const d=map[m.name]||{lab:0,mamako:0,ta:0};
+    const labTax   = Math.floor(d.lab    * taxRate);
+    const mamakoTax= Math.floor(d.mamako * taxRate);
+    const taTax    = Math.floor(d.ta     * taxRate);
+    const net=(d.lab-labTax)+(d.mamako-mamakoTax)+(d.ta-taTax);
+    totalNet+=net;
+
+    const fmt=function(v){return v>0?v:'-';};
+    const fmtT=function(v){return v>0?v:'-';};
+    data.push([
+      m.name,
+      m.ssn  ? m.ssn.slice(0,6)+'-'+(m.ssn.slice(6)||'*******') : '-',
+      m.phone||'-',
+      m.account||'-',
+      fmt(d.lab),    fmtT(labTax>0?labTax:0)||'-',
+      fmt(d.mamako), fmtT(mamakoTax>0?mamakoTax:0)||'-',
+      fmt(d.ta),     fmtT(taTax>0?taTax:0)||'-',
+      net>0?net:'-',
+      ''
+    ]);
   });
-  var sumRow=['','합계',''].concat(usedTypes.map(function(){return '';})).concat([tb,tt,tn,'']);
-  data.push([],sumRow);
+
+  // 합계행
+  var totLab=0,totMamako=0,totTa=0;
+  sorted.forEach(function(m){
+    const d=map[m.name]||{lab:0,mamako:0,ta:0};
+    totLab+=d.lab; totMamako+=d.mamako; totTa+=d.ta;
+  });
+  data.push([]);
+  data.push([
+    '합계','','','',
+    totLab||'-', totLab?Math.floor(totLab*taxRate):'-',
+    totMamako||'-', totMamako?Math.floor(totMamako*taxRate):'-',
+    totTa||'-', totTa?Math.floor(totTa*taxRate):'-',
+    totalNet||'-', ''
+  ]);
+
   const wb=XLSX.utils.book_new();
   const ws=XLSX.utils.aoa_to_sheet(data);
-  var cols=[{wch:6},{wch:10},{wch:12}];
-  usedTypes.forEach(function(){cols.push({wch:16});});
-  cols=cols.concat([{wch:16},{wch:22},{wch:14},{wch:32}]);
-  ws['!cols']=cols;
-  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:header.length-1}}];
+  ws['!cols']=[
+    {wch:10},{wch:18},{wch:16},{wch:32},
+    {wch:12},{wch:12},
+    {wch:12},{wch:12},
+    {wch:12},{wch:12},
+    {wch:18},{wch:16}
+  ];
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:11}}];
   XLSX.utils.book_append_sheet(wb,ws,'정산현황');
   XLSX.writeFile(wb,'정산현황_'+periodLabel+'.xlsx');
   notif('엑셀 파일이 다운로드되었습니다');
